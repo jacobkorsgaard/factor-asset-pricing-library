@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "factor-asset-pricing"
+version = "0.1.0"
+description = "Compact empirical asset-pricing tools"
+readme = "README.md"
+authors = [{ name = "Jacob Korsgaard" }]
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = ["numpy", "pandas", "scipy", "statsmodels", "matplotlib"]
+
+[project.urls]
+Repository = "https://github.com/jacobkorsgaard/factor-asset-pricing-library"
+Issues = "https://github.com/jacobkorsgaard/factor-asset-pricing-library/issues"
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
