@@ -44,9 +44,13 @@ has independently reproduced every result in those projects.
 
 ## Generalizations introduced here
 
-- Quantile sorts accept arbitrary portfolio counts and up to three dimensions.
+- Quantile assignments accept arbitrary portfolio counts and explicit
+  breakpoint probabilities.
 - Reference breakpoints may use NYSE, the full universe, or a custom mask.
 - Sequential sorting conditions each later signal on all earlier assignments.
+- Explicit conditioning can reproduce designs in which several signals are
+  independently conditioned on the same earlier size assignment.
+- Annual formation assignments can be carried into a subsequent holding year.
 - Portfolio returns and factors can be EW or VW.
 - Momentum exposes configurable lookback, skip, and holding periods.
 - Volatility management additionally permits inverse-volatility scaling.
@@ -67,4 +71,3 @@ and empirical analysis.
 Future notebooks will explain and demonstrate the reusable methods by calling
 the package. They will not duplicate the implementation or replace the complete
 research projects.
-

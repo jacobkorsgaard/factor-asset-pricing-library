@@ -5,3 +5,13 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.DS_Store
+.ipynb_checkpoints/
+
+# Empirical inputs are local-only. CRSP and Compustat data are licensed, and
+# downloaded benchmark files should be obtained from their original provider.
+data/raw/*
+!data/raw/.gitkeep
+data/reference/*
+!data/reference/.gitkeep
+sources/*.pdf

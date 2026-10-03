@@ -57,6 +57,17 @@ relies on stronger iid and normality assumptions than HAC inference. Reporting
 HAC alpha t-statistics alongside conventional GRS results makes the distinction
 visible rather than treating the two procedures as interchangeable.
 
+## Time-series spanning and Fama--MacBeth regressions
+
+A time-series spanning regression asks whether a candidate return has an alpha
+relative to contemporaneous benchmark-factor returns. A Fama--MacBeth
+regression asks whether exposures explain the cross section of returns. The
+minimal implementation first estimates fixed full-sample betas when requested,
+then runs one cross-sectional regression per period and averages the resulting
+risk-premium estimates. HAC inference is applied to those coefficient time
+series. It does not include a Shanken errors-in-variables correction, which
+should be stated when estimated betas are used as regressors.
+
 ## Momentum windows
 
 At month t, momentum signals must exclude the month-t return. A skip period can
@@ -65,6 +76,14 @@ momentum implementations. Holding periods above one create overlapping
 vintages, which should be combined explicitly and generally imply serially
 correlated strategy returns.
 
+The stock-momentum notebook uses the conventional 12--2 signal: eleven returns
+from months t-12 through t-2, followed by a one-month holding period. Signals
+are missing when this history is incomplete or contains a calendar gap. The
+time-series factor-momentum portfolio divides by the number of factors with a
+valid signal and current return in each month; missing returns are excluded
+rather than silently replaced with zero. Its cross-sectional counterpart puts
+half of gross exposure in above-median factors and half in below-median factors.
+
 ## Volatility-managed returns
 
 Current-month realized variance is unknown at the start of the month. Managed
@@ -72,4 +91,3 @@ month-t returns therefore use a lagged realized measure. Ex-post constants that
 match managed and unmanaged full-sample volatility facilitate Sharpe and alpha
 comparisons, but they are not implementable real-time targets. A live strategy
 requires a constant estimated only from information available at the time.
-
