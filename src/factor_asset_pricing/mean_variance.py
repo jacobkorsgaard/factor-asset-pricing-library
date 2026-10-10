@@ -47,12 +47,18 @@ def global_minimum_variance(covariance) -> np.ndarray:
 
 
 def tangency_portfolio(expected_returns, covariance, *, risk_free_rate: float = 0.0) -> np.ndarray:
-    """Fully invested unconstrained tangency/max-Sharpe weights."""
+    """Fully invested positive-Sharpe tangency weights.
+
+    The direction Sigma^-1(mu-rf) must have a positive sum to permit
+    sum-to-one normalization without reversing its maximum-Sharpe orientation.
+    """
     mu = np.asarray(expected_returns, dtype=float)
     cov = np.asarray(covariance, dtype=float)
     direction = np.linalg.pinv(cov) @ (mu - risk_free_rate)
     if np.isclose(direction.sum(), 0):
         raise ValueError("tangency direction cannot be normalized to sum to one")
+    if direction.sum() < 0:
+        raise ValueError("maximum-Sharpe direction requires a positive sum for fully invested weights")
     return direction / direction.sum()
 
 

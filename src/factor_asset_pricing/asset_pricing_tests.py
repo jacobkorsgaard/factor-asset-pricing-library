@@ -24,11 +24,10 @@ def time_series_regression(
     ``'HAC'``/``'Newey-West'``; parameter estimates are identical and only
     inference changes.
     """
-    name = asset_returns.name or "asset"
-    sample = pd.concat([asset_returns.rename(name), factor_returns], axis=1).dropna()
+    sample = pd.concat([asset_returns, factor_returns], axis=1).dropna()
     if sample.empty:
         raise ValueError("no complete observations")
-    model = sm.OLS(sample[name], sm.add_constant(sample[factor_returns.columns], has_constant="add"))
+    model = sm.OLS(sample.iloc[:, 0], sm.add_constant(sample.iloc[:, 1:], has_constant="add"))
     key = cov_type.lower().replace("_", "-")
     if key == "ols":
         return model.fit()
@@ -178,7 +177,10 @@ def grs_test(asset_returns: pd.DataFrame, factor_returns: pd.DataFrame) -> dict[
     """Gibbons--Ross--Shanken test that all time-series alphas equal zero.
 
     The conventional finite-sample statistic assumes iid multivariate-normal
-    residuals and requires T > N + K.
+    residuals, full-rank factor and residual covariance matrices, and T > N + K.
+    With S = E'E/(T-K-1) and Omega = (F-Fbar)'(F-Fbar)/(T-1),
+    GRS = T(T-N-K)/(N(T-K-1)) * (alpha'S^-1 alpha) /
+    (1 + T/(T-1) * Fbar'Omega^-1 Fbar).
     """
     sample = pd.concat({"assets": asset_returns, "factors": factor_returns}, axis=1).dropna()
     assets = sample["assets"].to_numpy(dtype=float)
@@ -188,16 +190,20 @@ def grs_test(asset_returns: pd.DataFrame, factor_returns: pd.DataFrame) -> dict[
     if t <= n + k:
         raise ValueError("GRS requires T > N + K")
     x = np.column_stack([np.ones(t), factors])
+    if np.linalg.matrix_rank(x) != k + 1:
+        raise ValueError("GRS requires a full rank factor design")
     coefficients = np.linalg.lstsq(x, assets, rcond=None)[0]
     alpha = coefficients[0]
     residuals = assets - x @ coefficients
+    if np.linalg.matrix_rank(residuals) != n:
+        raise ValueError("GRS requires full rank residual covariance")
     residual_cov = residuals.T @ residuals / (t - k - 1)
     factor_mean = factors.mean(axis=0)
     factor_cov = np.cov(factors, rowvar=False, ddof=1)
     factor_cov = np.atleast_2d(factor_cov)
-    numerator = alpha @ np.linalg.pinv(residual_cov) @ alpha
-    denominator = 1 + factor_mean @ np.linalg.pinv(factor_cov) @ factor_mean
-    statistic = ((t - n - k) / n) * numerator / denominator
+    numerator = alpha @ np.linalg.solve(residual_cov, alpha)
+    denominator = 1 + (t / (t - 1)) * factor_mean @ np.linalg.solve(factor_cov, factor_mean)
+    statistic = (t * (t - n - k) / (n * (t - k - 1))) * numerator / denominator
     return {
         "statistic": float(statistic), "pvalue": float(stats.f.sf(statistic, n, t - n - k)),
         "df1": n, "df2": t - n - k, "nobs": t,
@@ -250,7 +256,8 @@ def performance_summary(
             },
         )
         wealth = (1 + series).cumprod()
-        drawdown = wealth.div(wealth.cummax()).sub(1)
+        # W_0 = 1 precedes the first return and belongs to the running peak.
+        drawdown = wealth.div(wealth.cummax().clip(lower=1)).sub(1)
         rows.append(
             {
                 "asset": name,
@@ -274,13 +281,21 @@ def maximum_sharpe_ratio(
     *,
     periods_per_year: int = 12,
 ) -> dict:
-    """Unconstrained ex-post maximum Sharpe ratio and sum-to-one weights."""
+    """Unconstrained ex-post maximum Sharpe ratio for excess returns.
+
+    Weights follow the positive maximum-Sharpe direction. They sum to one
+    when that normalization preserves its sign; otherwise they have unit gross
+    exposure. They need not represent a fully invested risky portfolio.
+    """
     clean = returns.dropna()
     mean = clean.mean().to_numpy()
     covariance = clean.cov().to_numpy()
     raw = np.linalg.pinv(covariance) @ mean
     total = raw.sum()
-    weights = raw / total if not np.isclose(total, 0) else raw / np.abs(raw).sum()
+    gross = np.abs(raw).sum()
+    if gross == 0:
+        raise ValueError("maximum Sharpe direction is not identified")
+    weights = raw / total if total > 0 and not np.isclose(total, 0) else raw / gross
     portfolio = clean @ weights
     return {
         "sharpe": float(sharpe_ratio(portfolio, periods_per_year=periods_per_year)),

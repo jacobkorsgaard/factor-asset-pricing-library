@@ -40,9 +40,14 @@ def momentum_signal(
     if dates is None:
         return signal
     periods = pd.Series(pd.to_datetime(dates), index=returns.index).dt.to_period("M").astype("int64")
+    if pd.isna(pd.to_datetime(dates)).any() or periods.diff().dropna().le(0).any():
+        raise ValueError("dates must contain unique months in increasing order")
     window_start = periods.shift(skip + lookback - 1)
     window_end = periods.shift(skip)
-    consecutive = window_end.sub(window_start).eq(lookback - 1)
+    # skip counts intentionally excluded observations, not permission to use
+    # an older calendar window when observations are missing before month t.
+    consecutive = (window_end.sub(window_start).eq(lookback - 1)
+                   & periods.sub(window_end).eq(skip))
     return signal.where(consecutive)
 
 

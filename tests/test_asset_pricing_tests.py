@@ -1,10 +1,133 @@
 import numpy as np
 import pandas as pd
+import pytest
+from scipy import stats
+import statsmodels.api as sm
+import ast
+import json
+from pathlib import Path
 
 from factor_asset_pricing.asset_pricing_tests import (
     factor_regressions, fama_macbeth_regression, grs_test, performance_summary, pricing_error_summary,
     spanning_regression, two_pass_fama_macbeth,
+    maximum_sharpe_ratio, compare_maximum_sharpe, time_series_regression,
 )
+
+
+def test_grs_matches_independent_divisor_t_calculation():
+    rng = np.random.default_rng(1)
+    factors = pd.DataFrame(rng.normal(.01, .05, (100, 2)))
+    assets = pd.DataFrame(.01 + rng.normal(0, .04, (100, 3)))
+    # Independent OLS fits and ML covariance normalization, rather than the
+    # implementation's unbiased covariance matrices and adjusted prefactor.
+    fits = [sm.OLS(assets[c], sm.add_constant(factors)).fit() for c in assets]
+    alpha = np.array([fit.params.iloc[0] for fit in fits])
+    errors = np.column_stack([fit.resid for fit in fits])
+    sigma = errors.T @ errors / len(assets)
+    centered = factors.to_numpy() - factors.mean().to_numpy()
+    omega = centered.T @ centered / len(factors)
+    mean = factors.mean().to_numpy()
+    expected = (95 / 3) * (alpha @ np.linalg.solve(sigma, alpha)) / (
+        1 + mean @ np.linalg.solve(omega, mean)
+    )
+    result = grs_test(assets, factors)
+    assert expected == pytest.approx(10.093957706224327)
+    assert result['statistic'] == pytest.approx(expected, rel=1e-12)
+    assert result['pvalue'] == pytest.approx(stats.f.sf(expected, 3, 95))
+
+
+def test_single_asset_grs_equals_squared_ols_alpha_t():
+    rng = np.random.default_rng(19)
+    factors = pd.DataFrame({'f': rng.normal(.02, .05, 35)})
+    assets = pd.DataFrame({'a': .01 + .7 * factors.f + rng.normal(0, .03, 35)})
+    fit = time_series_regression(assets.a, factors)
+    assert grs_test(assets, factors)['statistic'] == pytest.approx(fit.tvalues['const'] ** 2)
+
+
+def test_grs_rejects_redundant_factors_and_assets():
+    rng = np.random.default_rng(23)
+    factors = pd.DataFrame({'f': rng.normal(size=40)})
+    assets = pd.DataFrame(rng.normal(size=(40, 2)))
+    with pytest.raises(ValueError, match='full rank'):
+        grs_test(assets, factors.assign(duplicate=factors.f))
+    with pytest.raises(ValueError, match='full rank'):
+        grs_test(assets.assign(duplicate=assets[0]), factors)
+
+
+def test_drawdown_includes_initial_wealth():
+    returns = pd.Series([-.2, .1, .1], name='strategy')
+    assert performance_summary(returns, hac_lags=0).loc['strategy', 'maximum_drawdown'] == pytest.approx(-.2)
+
+
+def test_regression_allows_matching_asset_and_factor_names():
+    factors = pd.DataFrame({'f': [-.02, .01, .03, -.01, .04]})
+    candidate = (.005 + 2 * factors.f).rename('f')
+    fit = time_series_regression(candidate, factors)
+    assert fit.params['const'] == pytest.approx(.005)
+    assert fit.params['f'] == pytest.approx(2)
+
+
+def test_maximum_sharpe_preserves_negative_and_zero_sum_directions():
+    deviations = np.array([-.03, -.01, .01, .03])
+    for means in [(-.05, -.05), (.05, -.05), (.05, .05)]:
+        returns = pd.DataFrame({'a': means[0] + deviations,
+                                'b': means[1] + deviations[[1, 3, 0, 2]]})
+        result = maximum_sharpe_ratio(returns)
+        mean = returns.mean().to_numpy()
+        expected = np.sqrt(12 * mean @ np.linalg.solve(returns.cov(), mean))
+        assert result['sharpe'] == pytest.approx(expected)
+        if means[0] < 0:
+            assert result['weights'].sum() < 0
+        elif means[1] < 0:
+            assert result['weights'].sum() == pytest.approx(0, abs=1e-12)
+        else:
+            assert result['weights'].sum() == pytest.approx(1)
+
+
+def test_adding_candidate_cannot_reduce_unconstrained_maximum_sharpe():
+    returns = pd.DataFrame({'a': [-.08, -.06, -.04, -.02],
+                            'b': [-.03, -.01, -.02, -.04]})
+    result = compare_maximum_sharpe(returns[['a']], returns.b)
+    assert result['difference'] >= -1e-12
+
+
+def test_notebook_downside_statistics_include_initial_wealth():
+    path = Path(__file__).resolve().parents[1] / 'notebooks/05_volatility_managed_factors.ipynb'
+    notebook = json.loads(path.read_text())
+    source = next(''.join(cell['source']) for cell in notebook['cells']
+                  if cell['cell_type'] == 'code' and ''.join(cell['source']).startswith('def downside_statistics'))
+    function = ast.parse(source).body[0]
+    namespace = {'sharpe_ratio': lambda series: 0}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), 'exec'), namespace)
+    result = namespace['downside_statistics'](pd.Series([-.2, .1, .1]))
+    assert result['Maximum drawdown (%)'] == pytest.approx(-20)
+
+
+def test_notebook_long_only_sharpe_uses_risk_free_returns():
+    from factor_asset_pricing.asset_pricing_tests import sharpe_ratio
+
+    path = Path(__file__).resolve().parents[1] / 'notebooks/04_momentum_in_asset_pricing.ipynb'
+    notebook = json.loads(path.read_text())
+    source = next(''.join(cell['source']) for cell in notebook['cells']
+                  if cell['cell_type'] == 'code' and 'stock_performance = ' in ''.join(cell['source']))
+    statements = []
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.Assign) and any(
+            'stock_performance' in ast.unparse(target) for target in node.targets
+        ):
+            statements.append(node)
+    panel = pd.DataFrame({'Winners': [.02, .03, -.01, .04],
+                          'Losers': [.01, -.02, .02, .01],
+                          'WML': [.01, .05, -.03, .03]})
+    rf = pd.Series(.005, index=panel.index)
+    namespace = {'stock_strategy_returns': panel, 'risk_free': rf,
+                 'performance_summary': performance_summary, 'sharpe_ratio': sharpe_ratio}
+    exec(compile(ast.Module(body=statements, type_ignores=[]), str(path), 'exec'), namespace)
+    result = namespace['stock_performance']
+    assert result.loc['Winners', 'sharpe'] == pytest.approx(sharpe_ratio(panel.Winners - rf))
+    assert result.loc['Losers', 'sharpe'] == pytest.approx(sharpe_ratio(panel.Losers - rf))
+    assert result.loc['WML', 'sharpe'] == pytest.approx(sharpe_ratio(panel.WML))
+    assert result.loc['Winners', 'mean_monthly'] == pytest.approx(panel.Winners.mean())
 
 
 def test_performance_summary_reports_hac_mean_and_drawdown():

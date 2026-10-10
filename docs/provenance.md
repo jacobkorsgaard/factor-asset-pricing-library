@@ -1,73 +1,86 @@
-# Provenance and alignment
+# Provenance and validation scope
 
-This library collects reusable methods from two companion empirical projects:
+The library separates reusable calculations from complete empirical projects:
 
-- [Fama–French five-factor replication](https://github.com/jacobkorsgaard/fama-french-five-factor-replication)
-- [Volatility-managed factors and momentum](https://github.com/jacobkorsgaard/volatility-managed-factors-and-momentum)
+- [Fama–French five-factor replication](https://github.com/jacobkorsgaard/fama-french-five-factor-replication):
+  CRSP/Compustat preparation, June formation, portfolio/factor construction,
+  and comparison with French benchmarks.
+- [Volatility-managed factor portfolios](https://github.com/jacobkorsgaard/volatility-managed-factors-and-momentum):
+  the remote recorded by the local `volatility-management-and-liquidity`
+  repository; public factor-file preparation, volatility timing, and its
+  complete empirical applications. Anonymous GitHub API access confirmed both
+  companion repositories are public on 10 October 2026.
 
-The companion repositories remain the complete empirical applications. This
-library extracts their reusable calculations and makes selected dimensions and
-column names configurable. It does not claim that every generalized interface
-has independently reproduced every result in those projects.
+Local companion code establishes implementation lineage, not the historical
+commit that produced every prepared dataset. Exact known input schemas,
+source vintages, and missing provenance are recorded in the
+[data guide](../data/README.md#verified-vintage-and-provenance-limits).
 
-## Directly preserved conventions
+## Preserved conventions
 
-### Fama–French replication
+The Fama–French implementation compounds ordinary/delisting returns, uses
+absolute prices for market equity, applies the preferred-stock hierarchy,
+excludes nonpositive book equity, aligns prior-year accounts and prior-December
+market equity with June formation, and carries labels July–June. NYSE quantiles
+use lower interpolation and ties enter the lower group. Monthly VW aggregation
+uses lagged market equity; characteristic factors equally average the required
+size cells and FF5 SMB averages three family size components. OP requires
+revenue and COGS with missing SG&A/interest treated as zero. These are the
+library/companion conventions, not a claim of exact equivalence to every French
+historical definition or data vintage.
 
-- Ordinary and delisting returns are compounded when both are present.
-- Market equity is absolute price times shares outstanding.
-- Preferred stock uses redemption, liquidation, then carrying value.
-- Nonpositive book equity is excluded.
-- Operating profitability is revenue less COGS, SG&A, and interest, divided by
-  book equity; missing SG&A and interest are treated as zero.
-- Investment is annual asset growth relative to lagged total assets.
-- Fiscal-year t accounting values become formation-year t+1 signals.
-- Book-to-market uses prior-December market equity in matching units.
-- Fama–French holding years run from July through June.
-- NYSE breakpoints use lower interpolation and breakpoint equality enters the
-  lower portfolio.
-- Monthly VW returns use prior-month market equity.
-- A 2×3 characteristic factor equally averages high and low cells across size.
-- The associated SMB component equally averages the three small and three big
-  characteristic cells.
+Volatility management aggregates demeaned daily squared returns and uses
+lagged variance. The library's optional normalization matches volatility over
+the supplied complete sample; the companion prepared constants use its
+April-2015 cutoff, while notebook figures additionally rescale over plotted
+samples. These constants have distinct estimation windows and are ex-post
+within those windows. Library factor momentum uses the sign of a trailing
+**compounded return**, not an arithmetic mean. This educational application
+should not be assumed to reproduce every companion strategy definition.
 
-### Volatility-management project
+## Reusable interfaces and empirical applications
 
-- Monthly realized variance is the demeaned sum of squared daily returns.
-- Managed month-t returns use a lagged realized measure.
-- Inverse-variance scaling can be normalized with one positive full-sample
-  constant to match unmanaged and managed sample volatility.
-- Default factor momentum takes the sign of the preceding 12-month arithmetic
-  mean and equal-weights available factor positions.
-- Monthly spanning regressions default to Newey–West/HAC inference with 12
-  lags in this library's spanning interface.
+The package generalizes column names, breakpoint universes, portfolio counts,
+conditioning, EW/VW choices, formation timing, momentum horizons, and return
+panels. Generalized options are tested, but no claim is made that every option
+independently reproduces a companion project's results. Generic row-based lags
+require caller-managed calendar alignment; the stock-momentum implementation
+adds explicit calendar checks. Missing-return handling is a calculation
+convention, not a real-time information rule. See the
+[code guide](code-guide.md#formation-breakpoints-and-weights).
 
-## Generalizations introduced here
+All five educational notebooks now exist and use the package where applicable;
+Notebook 01 is conceptual. Notebook 02 demonstrates factor spanning, 03 joint
+model evaluation, 04 momentum, and 05 volatility management. They consume
+prepared inputs instead of duplicating complete source-data pipelines.
 
-- Quantile assignments accept arbitrary portfolio counts and explicit
-  breakpoint probabilities.
-- Reference breakpoints may use NYSE, the full universe, or a custom mask.
-- Sequential sorting conditions each later signal on all earlier assignments.
-- Explicit conditioning can reproduce designs in which several signals are
-  independently conditioned on the same earlier size assignment.
-- Annual formation assignments can be carried into a subsequent holding year.
-- Portfolio returns and factors can be EW or VW.
-- Momentum exposes configurable lookback, skip, and holding periods.
-- Volatility management additionally permits inverse-volatility scaling.
-- Regression and mean–variance functions accept arbitrary return panels.
+The mathematical corrections have focused regression coverage. Notebooks
+03–05 were re-executed against unchanged prepared files, their outputs were
+compared with the original baseline, and saved results were aligned with the
+corrected implementation. The [validation record](empirical-validation.md)
+contains numerical comparisons, samples, and checksums. Later educational
+Markdown edits preserved executable cells and outputs. This is validation of
+the recorded applications, not a general certification of all research designs
+or point-in-time data availability.
 
-These generalizations should be viewed as transparent extensions of the source
-logic, not as results validated in the companion replications.
+Documentation validation on 10 October 2026 used a clean editable installation
+with Python 3.13, NumPy 2.5.3, pandas 3.0.6, SciPy 1.18.1, statsmodels 0.15.0,
+Matplotlib 3.11.2, and PyArrow 26.0.0. The synthetic workflow and all 52 tests
+passed; all five prepared Parquet files were readable. Notebook 03 also
+executed successfully with the documented kernel override, writing only to a
+temporary directory. Final release review removed the 14 pandas grouping
+future-compatibility warnings by using a scalar key for single-column groups.
+All 52 tests then passed with those warnings treated as errors, and synthetic
+portfolio assignments and returns were unchanged. The original and revised
+sorting engines also produced exactly equal assignments and breakpoints in all
+seven sorting-test calls, including annual and conditional sorts. A fresh
+installation with both optional extras passed dependency checks; all notebook
+code cells, saved outputs, figures, and five prepared-input checksums remained
+unchanged. All 31 internal links and 260 MathJax expressions validated.
+This environment is a validation record, not a
+locked environment for exact historical output reproduction.
 
-## Deliberately project-specific work
-
-The library does not acquire licensed data, parse vendor exports, resolve CCM
-links, impose a complete CRSP universe, reproduce every project table, or write
-project outputs. The Fama–French replication remains the source for the full
-June formation and July–June factor-replication pipeline. The volatility
-project remains the source for its complete data build, AR and GARCH exercises,
-and empirical analysis.
-
-Future notebooks will explain and demonstrate the reusable methods by calling
-the package. They will not duplicate the implementation or replace the complete
-research projects.
+The library does not acquire licensed observations, parse vendor exports,
+resolve CCM links, certify historical accounting vintages, enforce a complete
+CRSP universe, or reproduce every companion table. Broader companion AR/GARCH
+experiments remain outside this library's notebook sequence.

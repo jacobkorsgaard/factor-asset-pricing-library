@@ -166,7 +166,8 @@ def _assign_with_breakpoints(
         conditioning_labels = [f"{parent}{label_suffix}" for parent in parents]
         keys = [period, *conditioning_labels]
 
-        for group_key, indices in out.groupby(keys, observed=True, dropna=False).groups.items():
+        grouping = keys[0] if len(keys) == 1 else keys
+        for group_key, indices in out.groupby(grouping, observed=True, dropna=False).groups.items():
             indices = pd.Index(indices)
             probabilities = specifications[char]
             breaks = quantile_breakpoints(

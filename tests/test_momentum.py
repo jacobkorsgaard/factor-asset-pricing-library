@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from factor_asset_pricing.momentum import (
     conditional_future_returns,
@@ -11,6 +12,25 @@ from factor_asset_pricing.momentum import (
     momentum_signal,
     stock_momentum,
 )
+
+
+def test_signal_rejects_calendar_gap_between_window_and_holding_month():
+    dates = pd.to_datetime(['2020-01-31', '2020-02-29', '2020-04-30'])
+    signal = momentum_signal(pd.Series([.1, .2, .3]), lookback=2, skip=1, dates=dates)
+    assert signal.isna().all()
+
+
+def test_intentional_skip_excludes_returns_without_creating_calendar_gap():
+    dates = pd.date_range('2020-01-31', periods=4, freq='ME')
+    signal = momentum_signal(pd.Series([.1, .2, -.9, .8]), lookback=2, skip=2, dates=dates)
+    assert signal.iloc[3] == pytest.approx(1.1 * 1.2 - 1)
+
+
+def test_signal_rejects_duplicate_and_unordered_months():
+    for dates in [['2020-01-01', '2020-01-31', '2020-03-31'],
+                  ['2020-02-29', '2020-01-31', '2020-03-31']]:
+        with pytest.raises(ValueError, match='unique.*increasing'):
+            momentum_signal(pd.Series([.1, .2, .3]), lookback=2, dates=pd.to_datetime(dates))
 
 
 def test_stock_signal_lookback_and_skip():
