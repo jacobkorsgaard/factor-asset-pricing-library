@@ -92,7 +92,7 @@ def test_adding_candidate_cannot_reduce_unconstrained_maximum_sharpe():
 
 
 def test_notebook_downside_statistics_include_initial_wealth():
-    path = Path(__file__).resolve().parents[1] / 'notebooks/05_volatility_managed_factors.ipynb'
+    path = Path(__file__).resolve().parents[1] / 'notebooks/09_volatility_managed_factors.ipynb'
     notebook = json.loads(path.read_text())
     source = next(''.join(cell['source']) for cell in notebook['cells']
                   if cell['cell_type'] == 'code' and ''.join(cell['source']).startswith('def downside_statistics'))
@@ -106,7 +106,7 @@ def test_notebook_downside_statistics_include_initial_wealth():
 def test_notebook_long_only_sharpe_uses_risk_free_returns():
     from factor_asset_pricing.asset_pricing_tests import sharpe_ratio
 
-    path = Path(__file__).resolve().parents[1] / 'notebooks/04_momentum_in_asset_pricing.ipynb'
+    path = Path(__file__).resolve().parents[1] / 'notebooks/08_momentum_in_asset_pricing.ipynb'
     notebook = json.loads(path.read_text())
     source = next(''.join(cell['source']) for cell in notebook['cells']
                   if cell['cell_type'] == 'code' and 'stock_performance = ' in ''.join(cell['source']))
