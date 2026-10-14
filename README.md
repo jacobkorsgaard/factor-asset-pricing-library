@@ -4,7 +4,7 @@ A Python library and notebook sequence for people interested in applied factor i
 
 Traded factors are both investments and asset-pricing benchmarks. The notebooks explain how to construct their payoffs, estimate exposures and abnormal returns, and assess their contribution to portfolio opportunities. Each method is followed by an application using prepared empirical data.
 
-The Python package provides reusable calculations. The required empirical inputs are described in the [data guide](data/README.md).
+The Python package provides reusable calculations.
 
 ## Constructing Tradable Factors
 
@@ -53,7 +53,7 @@ jupyter lab
 
 On Windows PowerShell, activate the environment using `.venv\Scripts\Activate.ps1`.
 
-To reproduce the empirical applications, configure the required inputs following the [data guide](data/README.md). Empirical data are not downloaded during installation.
+Empirical data are not downloaded during installation.
 
 Open a notebook, select the **Factor Asset Pricing** kernel, and run its cells from top to bottom. Each notebook runs independently, and saved figures and tables can be inspected without executing the code.
 
