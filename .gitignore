@@ -15,3 +15,7 @@ data/raw/*
 data/reference/*
 !data/reference/.gitkeep
 sources/*.pdf
+
+# Reproducible intermediates and generated notebook execution caches.
+data/processed/*
+!data/processed/.gitkeep

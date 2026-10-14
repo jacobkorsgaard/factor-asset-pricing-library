@@ -132,6 +132,7 @@ def fama_french_characteristics(
     fiscal_year_col: str = "fyear",
     accounting_date_col: str = "datadate",
     market_equity_scale: float = 1000.0,
+    annual_data: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Add standard Fama--French return, size, value, OP, and investment fields.
 
@@ -154,6 +155,12 @@ def fama_french_characteristics(
     while Compustat book equity is commonly in millions. Set
     ``market_equity_scale=1`` when the input units already match. This function
     expects an already linked, point-in-time CRSP--Compustat-style panel.
+
+    When ``annual_data`` is supplied, derive annual attributes directly from
+    cleaned original Compustat accounts instead of recovering them from monthly
+    carriers. This path requires unique company/fiscal years, consecutive fiscal
+    years for investment, and July availability no later than the holding year.
+    The default carrier-based behavior is retained for existing callers.
     """
     data = panel.copy()
     data[date_col] = pd.to_datetime(data[date_col])
@@ -171,8 +178,18 @@ def fama_french_characteristics(
         company_col, fiscal_year_col, accounting_date_col, "revt", "cogs",
         "xsga", "xint", "book_equity", "at",
     ]
+    if annual_data is None:
+        annual_source = data
+    else:
+        annual_source = annual_data.copy()
+        if annual_source.duplicated([company_col, fiscal_year_col]).any():
+            raise ValueError("annual_data requires unique company/fiscal years")
+        annual_source["book_equity"] = book_equity(
+            annual_source["seq"], annual_source["txditc"], annual_source["pstkrv"],
+            annual_source["pstkl"], annual_source["pstk"],
+        )
     annual = (
-        data.loc[data[company_col].notna() & data[fiscal_year_col].notna(), annual_cols]
+        annual_source.loc[annual_source[company_col].notna() & annual_source[fiscal_year_col].notna(), annual_cols]
         .sort_values([company_col, fiscal_year_col, accounting_date_col])
         .drop_duplicates([company_col, fiscal_year_col], keep="last")
     )
@@ -181,6 +198,15 @@ def fama_french_characteristics(
     )
     annual = annual.sort_values([company_col, fiscal_year_col])
     annual["inv"] = investment(annual["at"], group=annual[company_col])
+    if annual_data is not None:
+        previous_year = annual.groupby(company_col, observed=True)[fiscal_year_col].shift(1)
+        annual["inv"] = annual["inv"].where(annual[fiscal_year_col].sub(previous_year).eq(1))
+        # A fiscal-year label alone cannot make a later-dated statement available.
+        # June formation precedes July 1 of FYEAR+1; retain the reference calendar
+        # July convention; a mismatch is either not yet available or already
+        # expired for this FYEAR+1 holding window.
+        timely = pd.to_datetime(annual[accounting_date_col]).dt.year.eq(annual[fiscal_year_col])
+        annual.loc[~timely, ["book_equity", "op", "inv"]] = np.nan
     annual["signal_year"] = annual[fiscal_year_col].astype("Int64") + 1
     attributes = annual[[company_col, "signal_year", "book_equity", "op", "inv"]].rename(
         columns={"book_equity": "book_equity_ff"}
