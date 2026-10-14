@@ -1,10 +1,10 @@
 # Factor Asset Pricing Library
 
-A Python library and notebook sequence for people interested in applied factor investing and empirical asset pricing.
+This repository brings together some of my work on tradable factors within a single project, allowing me to collect, organize, and further develop my implementations of methods from the factor asset pricing literature. At the same time, it is intended to serve as a Python library with reusable code and a sequence of educational notebooks for anyone interested in applied factor investing and empirical asset pricing.
 
-Traded factors are both investments and asset-pricing benchmarks. The notebooks explain how to construct their payoffs, estimate exposures and abnormal returns, and assess their contribution to portfolio opportunities. Each method is followed by an application using prepared empirical data.
+From a practical perspective, traded factors serve two main purposes. First and foremost, they represent investable strategies, while also providing benchmarks for measuring risk exposures and evaluating investment performance. Consequently, factor asset pricing is not only of theoretical interest but also has practical applications in portfolio construction, investment evaluation, and risk management. These are the perspectives I aim to emphasize throughout this repository.
 
-The Python package provides reusable calculations.
+To make these methods accessible and illustrate their practical relevance, I have developed a sequence of notebooks explaining how to construct factor portfolios and their returns, estimate factor exposures and abnormal returns, and evaluate their contribution to investment opportunities. Each method is accompanied by an empirical application using prepared financial data, connecting the underlying theory to its implementation and interpretation.
 
 ## Constructing Tradable Factors
 
@@ -53,13 +53,11 @@ jupyter lab
 
 On Windows PowerShell, activate the environment using `.venv\Scripts\Activate.ps1`.
 
-Download original WRDS exports into `data/raw/wrds/` and Kenneth French CSV or ZIP files into `data/raw/french/` before running the notebooks. Required WRDS inputs are listed in notebook 00. Required French filenames and official download URLs are listed in the [source manifest](notes/french-source-manifest.csv).
-
-Open a notebook, select the **Factor Asset Pricing** kernel, and run its cells from top to bottom. Each notebook runs independently, and saved figures and tables can be inspected without executing the code.
-
-To install only the Python package, use `python -m pip install -e .`. Run the automated tests using `python -m pytest -q`.
+Place original WRDS exports in `data/raw/wrds/` and Kenneth French CSV or ZIP files in `data/raw/french/`. Run notebook 00 before 01–03. Select the **Factor Asset Pricing** kernel and run cells from top to bottom.
 
 ## Using the Python Library
+
+To install only the Python package, use `python -m pip install -e .`. Run the automated tests using `python -m pytest -q`.
 
 The package provides reusable functions that can be imported directly into Python scripts or notebooks. The implementations and docstrings describe their inputs and outputs, while the accompanying notebooks explain the underlying methods.
 
@@ -73,7 +71,7 @@ The package provides reusable functions that can be imported directly into Pytho
 | Construct momentum strategies | [momentum](src/factor_asset_pricing/momentum.py): `momentum_signal`, `stock_momentum`, `factor_momentum` | 08 |
 | Construct volatility-managed factors | [volatility_management](src/factor_asset_pricing/volatility_management.py): `aggregate_realized_variance`, `volatility_managed_return` | 09 |
 
-Data preparation is supported by [wrds_data](src/factor_asset_pricing/wrds_data.py), [data_preparation](src/factor_asset_pricing/data_preparation.py), and [french_data](src/factor_asset_pricing/french_data.py). These modules read and prepare local source files.
+Data preparation is supported by [wrds_data](src/factor_asset_pricing/wrds_data.py), [data_preparation](src/factor_asset_pricing/data_preparation.py), and [french_data](src/factor_asset_pricing/french_data.py). These modules read and prepare local source files. Required WRDS inputs are listed in notebook 00. The French reader reports the official download URL when a required file is missing.
 
 Functions require appropriately structured financial data. Return-based calculations use consistent frequencies and decimal returns, while portfolio formation requires correctly dated firm-level observations. Consult the linked docstrings for specific input conventions and requirements.
 
