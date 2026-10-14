@@ -8,7 +8,7 @@ The Python package provides reusable calculations.
 
 ## Constructing Tradable Factors
 
-These notebooks follow the construction of an investment from measured firm characteristics to portfolio holdings and traded factor payoffs. Execution requires original licensed WRDS exports; run 00 first to prepare the local inputs for 01–03.
+These notebooks follow the construction of an investment from measured firm characteristics to portfolio holdings and traded factor payoffs. Execution requires original licensed WRDS exports. Run 00 first to prepare the local inputs for 01–03.
 
 | Notebook | What it shows |
 |---|---|
