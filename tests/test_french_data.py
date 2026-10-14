@@ -19,7 +19,7 @@ def write_ff3(tmp_path, rows="196307,1,2,-99.99,0.2\n196308,-1,-999,3,0.1"):
 
 def test_monthly_units_sentinels_and_annual_exclusion(tmp_path):
     path, payload = write_ff3(tmp_path)
-    frame = load_french("ff3", tmp_path, download=False)
+    frame = load_french("ff3", tmp_path)
     assert list(frame) == ["MKT", "SMB", "HML", "RF"]
     assert frame.index.equals(pd.date_range("1963-07-01", periods=2, freq="MS", name="date"))
     assert frame.iloc[0].MKT == .01 and frame.iloc[0].RF == .002
@@ -36,13 +36,13 @@ def test_monthly_units_sentinels_and_annual_exclusion(tmp_path):
 def test_invalid_dates_gaps_and_width_raise(tmp_path, rows):
     write_ff3(tmp_path, rows)
     with pytest.raises(ValueError):
-        load_french("ff3", tmp_path, download=False)
+        load_french("ff3", tmp_path)
 
 
 def test_daily_trading_dates_not_calendar_filled(tmp_path):
     (tmp_path / 'F-F_Momentum_Factor_daily.csv').write_text(
         'metadata\n,Mom\n20240105,1.5\n20240108,-2\n')
-    frame = load_french('momentum', tmp_path, frequency='daily', download=False)
+    frame = load_french('momentum', tmp_path, frequency='daily')
     assert list(frame) == ['MOM']
     assert frame.index.tolist() == [pd.Timestamp('2024-01-05'), pd.Timestamp('2024-01-08')]
     assert frame.MOM.tolist() == [.015, -.02]
@@ -54,7 +54,7 @@ def test_selects_value_weighted_returns_and_momentum_columns(tmp_path):
         'metadata\n Value Weight Returns -- Monthly\n' + header + '\n196307,' +
         ','.join(str(i) for i in range(1, 11)) + '\n\n Equal Weight Returns -- Monthly\n' +
         header + '\n196307,' + ','.join(['99']*10))
-    frame = load_french('momentum_deciles', tmp_path, download=False)
+    frame = load_french('momentum_deciles', tmp_path)
     assert list(frame) == [f'P{i}' for i in range(1, 11)]
     assert frame.iloc[0].P10 == .1 and frame.iloc[0].P1 == .01
 
@@ -66,52 +66,46 @@ def test_rank_order_checked_before_renaming(tmp_path):
         path.write_text('metadata\n Average Value Weighted Returns -- Monthly\n,' +
                         ','.join(names) + '\n196307,' + ','.join(str(i) for i in range(25)))
     write(names)
-    frame = load_french('size_bm', tmp_path, download=False)
+    frame = load_french('size_bm', tmp_path)
     assert frame.iloc[0]['S2C1'] == .05 and frame.iloc[0]['S5C5'] == .24
     names[0], names[1] = names[1], names[0]
     write(names)
     with pytest.raises(ValueError, match='order'):
-        load_french('size_bm', tmp_path, download=False)
+        load_french('size_bm', tmp_path)
 
 
-def test_zip_download_preserves_bytes_and_offline_reuse(tmp_path, monkeypatch):
+def test_local_zip_preserves_original_bytes(tmp_path):
     _, csv_bytes = write_ff3(tmp_path)
     (tmp_path / 'F-F_Research_Data_Factors.csv').unlink()
     buffer = io.BytesIO()
     with ZipFile(buffer, 'w') as archive:
         archive.writestr('F-F_Research_Data_Factors.csv', csv_bytes)
     payload = buffer.getvalue()
-    calls = []
-    def download(url, timeout):
-        calls.append(url)
-        return io.BytesIO(payload)
-    monkeypatch.setattr('factor_asset_pricing.french_data.urlopen', download)
+    path = tmp_path / 'F-F_Research_Data_Factors_CSV.zip'
+    path.write_bytes(payload)
     first = load_french('ff3', tmp_path)
-    assert calls == [source_url('ff3')]
-    assert (tmp_path / 'F-F_Research_Data_Factors_CSV.zip').read_bytes() == payload
-    pd.testing.assert_frame_equal(first, load_french('ff3', tmp_path, download=False))
-    assert len(calls) == 1
-    assert not list(tmp_path.glob('*.download'))
+    pd.testing.assert_frame_equal(first, load_french('ff3', tmp_path))
+    assert path.read_bytes() == payload
 
 
-def test_malformed_local_source_is_not_replaced(tmp_path, monkeypatch):
+def test_malformed_local_source_is_not_replaced(tmp_path):
     path, payload = write_ff3(tmp_path)
-    path.write_bytes(payload.replace(b'SMB', b'WRONG'))
-    monkeypatch.setattr('factor_asset_pricing.french_data.urlopen', lambda *a, **k: pytest.fail('network used'))
+    malformed = payload.replace(b'SMB', b'WRONG')
+    path.write_bytes(malformed)
     with pytest.raises(ValueError, match='columns'):
         load_french('ff3', tmp_path)
+    assert path.read_bytes() == malformed
 
 
-def test_failed_download_not_saved(tmp_path, monkeypatch):
-    monkeypatch.setattr('factor_asset_pricing.french_data.urlopen', lambda *a, **k: io.BytesIO(b'<html>error</html>'))
-    with pytest.raises(ValueError):
+def test_missing_source_does_not_create_files(tmp_path):
+    with pytest.raises(FileNotFoundError, match='Download https://mba.tuck'):
         load_french('ff3', tmp_path)
     assert not list(tmp_path.iterdir())
 
 
 def test_missing_offline_and_frequency_validation(tmp_path):
     with pytest.raises(FileNotFoundError, match='https://mba.tuck'):
-        load_french('ff5', tmp_path, download=False)
+        load_french('ff5', tmp_path)
     with pytest.raises(ValueError):
         source_url('ff5', 'annual')
     with pytest.raises(ValueError):
@@ -127,7 +121,7 @@ def test_three_way_corner_labels_and_size_major_order(tmp_path):
     (tmp_path / '32_Portfolios_ME_BEME_OP_2x4x4.csv').write_text(
         'metadata\n Average Value Weighted Returns -- Monthly\n,' + ','.join(names) +
         '\n196307,' + ','.join(str(i) for i in range(32)))
-    frame = load_french('size_bm_op', tmp_path, download=False)
+    frame = load_french('size_bm_op', tmp_path)
     assert frame.iloc[0]['S-1-1'] == 0
     assert frame.iloc[0]['S-4-4'] == .15
     assert frame.iloc[0]['B-1-1'] == .16
@@ -138,6 +132,6 @@ def test_size_quintiles_exclude_negative_size_and_deciles(tmp_path):
     (tmp_path / 'Portfolios_Formed_on_ME.csv').write_text(
         'metadata\n Average Value Weight Returns -- Monthly\n'
         ',<= 0,Lo 20,Qnt 2,Qnt 3,Qnt 4,Hi 20,Lo 10\n196307,-99.99,1,2,3,4,5,99\n')
-    frame = load_french('size', tmp_path, download=False)
+    frame = load_french('size', tmp_path)
     assert list(frame) == ['Small', '2', '3', '4', 'Big']
     assert frame.iloc[0].tolist() == [.01, .02, .03, .04, .05]

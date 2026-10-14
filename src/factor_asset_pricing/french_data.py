@@ -10,7 +10,6 @@ import hashlib
 import io
 from pathlib import Path
 import re
-from urllib.request import urlopen
 from zipfile import ZipFile
 
 import numpy as np
@@ -139,14 +138,11 @@ def _parse(payload: bytes, dataset: str, frequency: str) -> pd.DataFrame:
     return frame
 
 
-def load_french(dataset: str, raw_dir: str | Path, *, frequency: str = "monthly",
-                download: bool = True) -> pd.DataFrame:
-    """Load original CSV or ZIP, downloading an absent source if allowed.
+def load_french(dataset: str, raw_dir: str | Path, *, frequency: str = "monthly") -> pd.DataFrame:
+    """Read a manually downloaded original CSV or ZIP without modifying it.
 
-    Downloads preserve the ZIP bytes exactly, validate before writing, and use
-    a temporary sibling for atomic publication. Malformed local files raise;
-    they are never replaced silently. Set download=False for offline runs.
-    Source path, URL and SHA-256 are attached as DataFrame attrs.
+    Missing files raise with their official download URL. Source path, URL and
+    SHA-256 are attached as DataFrame attrs. No network connection is made.
     """
     url = source_url(dataset, frequency)
     directory = Path(raw_dir)
@@ -155,25 +151,9 @@ def load_french(dataset: str, raw_dir: str | Path, *, frequency: str = "monthly"
                   directory / (stem + "_CSV.zip")]
     path = next((p for p in candidates if p.is_file()), None)
     if path is None:
-        if not download:
-            raise FileNotFoundError(f"Missing French source {stem}; obtain {url} in {directory}")
-        with urlopen(url, timeout=60) as response:
-            payload = response.read()
-        frame = _parse(payload, dataset, frequency)
-        directory.mkdir(parents=True, exist_ok=True)
-        path = candidates[-1]
-        # Exclusive unique temporary files prevent incomplete originals on failure.
-        import tempfile
-        with tempfile.NamedTemporaryFile(dir=directory, suffix=".download", delete=False) as temp:
-            temporary = Path(temp.name)
-            temp.write(payload)
-        try:
-            temporary.replace(path)
-        finally:
-            temporary.unlink(missing_ok=True)
-    else:
-        payload = path.read_bytes()
-        frame = _parse(payload, dataset, frequency)
+        raise FileNotFoundError(f"Missing French source {stem}. Download {url} into {directory}")
+    payload = path.read_bytes()
+    frame = _parse(payload, dataset, frequency)
     frame.attrs.update(source_file=str(path), source_url=url,
                        sha256=hashlib.sha256(payload).hexdigest(), frequency=frequency,
                        units="decimal", source_header=_csv_text(payload).splitlines()[0])

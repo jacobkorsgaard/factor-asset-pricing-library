@@ -184,3 +184,7 @@ fixed samples and FF5 inception, 08's explicit CRSP limitation and annual size
 formation, 09's daily-risk timing and April 2015 normalization, source hashes and
 vintage mix, and untracked raw/intermediate files. No operational dependency on
 licensed or companion data remains in notebooks 04–09.
+
+## Subsequent workflow simplification
+
+Manual source downloads are now the only ingestion workflow. Place original CSV or ZIP files in `data/raw/french/`. `load_french` reads local files and reports the official URL when a file is missing. Automatic downloading and its option were removed. Financial calculations and source parsing conventions are unchanged. Earlier download and execution descriptions above record the initial migration.
