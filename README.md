@@ -75,6 +75,14 @@ Data preparation is supported by [wrds_data](src/factor_asset_pricing/wrds_data.
 
 Functions require appropriately structured financial data. Return-based calculations use consistent frequencies and decimal returns, while portfolio formation requires correctly dated firm-level observations. Consult the linked docstrings for specific input conventions and requirements.
 
+## Main Textbook References
+
+The explanations and methods in this repository draw primarily on three books that have shaped my understanding of investments and empirical asset pricing:
+
+- **Munk, C. (2023). *Financial Markets and Investments*.** Foundations of investments, portfolio choice, and factor models.
+- **Cochrane, J. H. (2005). *Asset Pricing*, revised edition.** Asset-pricing theory, regression-based tests, and their portfolio interpretation.
+- **Campbell, J. Y., Lo, A. W., and MacKinlay, A. C. (1997). *The Econometrics of Financial Markets*.** Financial econometrics, return predictability, and empirical methods.
+
 ## License
 
 Distributed under the [MIT License](LICENSE). Third-party data remain subject to their providers' terms. No licensed empirical observations are distributed in this repository.
