@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from factor_asset_pricing.french_data import load_french, sample_coverage, source_url
+from factor_asset_pricing.french_data import download_french
 
 
 def write_ff3(tmp_path, rows="196307,1,2,-99.99,0.2\n196308,-1,-999,3,0.1"):
@@ -135,3 +136,52 @@ def test_size_quintiles_exclude_negative_size_and_deciles(tmp_path):
     frame = load_french('size', tmp_path)
     assert list(frame) == ['Small', '2', '3', '4', 'Big']
     assert frame.iloc[0].tolist() == [.01, .02, .03, .04, .05]
+
+
+def test_size_momentum_six_portfolios_units_and_order(tmp_path):
+    names = ['SMALL LoPRIOR', 'ME1 PRIOR2', 'SMALL HiPRIOR',
+             'BIG LoPRIOR', 'ME2 PRIOR2', 'BIG HiPRIOR']
+    path = tmp_path / '6_Portfolios_ME_Prior_12_2.csv'
+    def write(columns):
+        path.write_text('metadata\n Average Value Weighted Returns -- Monthly\n,' +
+                        ','.join(columns) + '\n196307,1,2,3,4,5,-99.99\n')
+    write(names)
+    frame = load_french('momentum_size', tmp_path)
+    assert list(frame) == ['SmallLow', 'SmallMiddle', 'SmallHigh',
+                           'BigLow', 'BigMiddle', 'BigHigh']
+    assert frame.index.tolist() == [pd.Timestamp('1963-07-01')]
+    assert frame.iloc[0].SmallHigh == .03
+    assert np.isnan(frame.iloc[0].BigHigh)
+    assert source_url('momentum_size').endswith('6_Portfolios_ME_Prior_12_2_CSV.zip')
+    names[0], names[2] = names[2], names[0]
+    write(names)
+    with pytest.raises(ValueError, match='order'):
+        load_french('momentum_size', tmp_path)
+
+
+def test_explicit_download_saves_original_and_reuses_local_source(tmp_path, monkeypatch):
+    _, payload = write_ff3(tmp_path)
+    (tmp_path / 'F-F_Research_Data_Factors.csv').unlink()
+    buffer = io.BytesIO()
+    with ZipFile(buffer, 'w') as archive:
+        archive.writestr('factors.csv', payload)
+    original = buffer.getvalue()
+    calls = []
+    def fetch(url, timeout):
+        calls.append((url, timeout))
+        return io.BytesIO(original)
+    monkeypatch.setattr('factor_asset_pricing.french_data.urlopen', fetch)
+    path = download_french('ff3', tmp_path)
+    assert path.read_bytes() == original
+    assert calls == [(source_url('ff3'), 60)]
+    assert download_french('ff3', tmp_path) == path
+    assert len(calls) == 1
+    assert load_french('ff3', tmp_path).iloc[0].MKT == .01
+
+
+def test_failed_download_leaves_no_source_file(tmp_path, monkeypatch):
+    monkeypatch.setattr('factor_asset_pricing.french_data.urlopen',
+                        lambda *args, **kwargs: io.BytesIO(b'<html>Unavailable</html>'))
+    with pytest.raises(ValueError):
+        download_french('ff3', tmp_path)
+    assert not list(tmp_path.iterdir())
