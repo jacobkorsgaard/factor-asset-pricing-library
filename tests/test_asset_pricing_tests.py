@@ -103,31 +103,21 @@ def test_notebook_downside_statistics_include_initial_wealth():
     assert result['Maximum drawdown (%)'] == pytest.approx(-20)
 
 
-def test_notebook_long_only_sharpe_uses_risk_free_returns():
-    from factor_asset_pricing.asset_pricing_tests import sharpe_ratio
-
+def test_notebook_momentum_deciles_subtract_aligned_rf_once():
     path = Path(__file__).resolve().parents[1] / 'notebooks/08_momentum_in_asset_pricing.ipynb'
     notebook = json.loads(path.read_text())
     source = next(''.join(cell['source']) for cell in notebook['cells']
-                  if cell['cell_type'] == 'code' and 'stock_performance = ' in ''.join(cell['source']))
-    statements = []
-    for node in ast.parse(source).body:
-        if isinstance(node, ast.Assign) and any(
-            'stock_performance' in ast.unparse(target) for target in node.targets
-        ):
-            statements.append(node)
-    panel = pd.DataFrame({'Winners': [.02, .03, -.01, .04],
-                          'Losers': [.01, -.02, .02, .01],
-                          'WML': [.01, .05, -.03, .03]})
-    rf = pd.Series(.005, index=panel.index)
-    namespace = {'stock_strategy_returns': panel, 'risk_free': rf,
-                 'performance_summary': performance_summary, 'sharpe_ratio': sharpe_ratio}
+                  if cell['cell_type'] == 'code' and 'decile_excess = ' in ''.join(cell['source']))
+    statements = [node for node in ast.parse(source).body if isinstance(node, ast.Assign)
+                  and any(ast.unparse(target) in {'decile_alpha_sample', 'decile_excess'}
+                          for target in node.targets)]
+    dates = pd.date_range('2000-01-01', periods=3, freq='MS')
+    portfolios = pd.DataFrame({'P1': [.01, .02, -.01], 'P10': [.03, -.01, .04]}, index=dates)
+    rf = pd.Series([.002, .003, .004], index=dates, name='RF').iloc[::-1]
+    factors = pd.DataFrame({'MKT': [.01, -.02, .03]}, index=dates)
+    namespace = {'pd': pd, 'momentum_deciles': portfolios, 'risk_free': rf, 'factors': factors}
     exec(compile(ast.Module(body=statements, type_ignores=[]), str(path), 'exec'), namespace)
-    result = namespace['stock_performance']
-    assert result.loc['Winners', 'sharpe'] == pytest.approx(sharpe_ratio(panel.Winners - rf))
-    assert result.loc['Losers', 'sharpe'] == pytest.approx(sharpe_ratio(panel.Losers - rf))
-    assert result.loc['WML', 'sharpe'] == pytest.approx(sharpe_ratio(panel.WML))
-    assert result.loc['Winners', 'mean_monthly'] == pytest.approx(panel.Winners.mean())
+    pd.testing.assert_frame_equal(namespace['decile_excess'], portfolios.sub(rf, axis=0))
 
 
 def test_performance_summary_reports_hac_mean_and_drawdown():

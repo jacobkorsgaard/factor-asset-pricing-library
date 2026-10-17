@@ -34,7 +34,7 @@ These notebooks extend beyond the foundations of factor asset pricing to explore
 
 | Notebook | What it shows |
 |---|---|
-| [08 — Momentum](notebooks/08_momentum_in_asset_pricing.ipynb) | Constructs stock and factor momentum strategies and evaluates their incremental returns and explanatory power. |
+| [08 — Momentum Factor and Factor Momentum](notebooks/08_momentum_in_asset_pricing.ipynb) | Constructs stock and factor momentum strategies and evaluates their incremental returns and explanatory power. |
 | [09 — Volatility-Managed Factors](notebooks/09_volatility_managed_factors.ipynb) | Examines volatility-managed factors using spanning tests, Sharpe comparisons, and momentum downside outcomes. |
 
 ## Installation and Setup

@@ -72,7 +72,13 @@ def efficient_frontier(
     target_returns=None,
     n_points: int = 100,
 ) -> pd.DataFrame:
-    """Analytical fully invested unconstrained minimum-variance frontier."""
+    """Analytical fully invested unconstrained minimum-variance frontier.
+
+    With A = 1' Sigma^-1 1, B = 1' Sigma^-1 mu, C = mu' Sigma^-1 mu,
+    and D = AC - B^2, each target m gives weights
+    ((C - Bm) / D) Sigma^-1 1 + ((Am - B) / D) Sigma^-1 mu.
+    The corresponding variance is (Am^2 - 2Bm + C) / D.
+    """
     mu = np.asarray(expected_returns, dtype=float)
     cov = np.asarray(covariance, dtype=float)
     inv = np.linalg.pinv(cov)

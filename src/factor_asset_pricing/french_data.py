@@ -10,6 +10,7 @@ import hashlib
 import io
 from pathlib import Path
 import re
+from urllib.request import urlopen
 from zipfile import ZipFile
 
 import numpy as np
@@ -23,6 +24,7 @@ SOURCES = {
     "momentum": "F-F_Momentum_Factor",
     "size": "Portfolios_Formed_on_ME",
     "momentum_deciles": "10_Portfolios_Prior_12_2",
+    "momentum_size": "6_Portfolios_ME_Prior_12_2",
     "size_bm": "25_Portfolios_5x5",
     "size_op": "25_Portfolios_ME_OP_5x5",
     "size_inv": "25_Portfolios_ME_INV_5x5",
@@ -99,7 +101,14 @@ def _parse(payload: bytes, dataset: str, frequency: str) -> pd.DataFrame:
             raise ValueError("Missing calendar months in French source")
     if required is not None:
         return frame.rename(columns={"Mkt-RF": "MKT", "Mom": "MOM"})
-    if dataset.startswith("size_"):
+    if dataset == "momentum_size":
+        expected = ["SMALL LoPRIOR", "ME1 PRIOR2", "SMALL HiPRIOR",
+                    "BIG LoPRIOR", "ME2 PRIOR2", "BIG HiPRIOR"]
+        if list(frame.columns) != expected:
+            raise ValueError("Unexpected size-momentum portfolio columns or order")
+        frame.columns = ["SmallLow", "SmallMiddle", "SmallHigh",
+                         "BigLow", "BigMiddle", "BigHigh"]
+    elif dataset.startswith("size_"):
         if dataset in {"size_bm", "size_op", "size_inv"}:
             labels = [f"S{s}C{c}" for s in range(1, 6) for c in range(1, 6)]
             characteristics = {"size_bm": ["BM"], "size_op": ["OP"], "size_inv": ["INV"]}[dataset]
@@ -158,6 +167,34 @@ def load_french(dataset: str, raw_dir: str | Path, *, frequency: str = "monthly"
                        sha256=hashlib.sha256(payload).hexdigest(), frequency=frequency,
                        units="decimal", source_header=_csv_text(payload).splitlines()[0])
     return frame
+
+
+def download_french(dataset: str, raw_dir: str | Path, *, frequency: str = "monthly") -> Path:
+    """Obtain a missing original archive from Dartmouth; never replace local inputs.
+
+    Downloads are explicit, separate from loading and financial calculations.
+    Validate the complete response before saving its original bytes. If a local
+    source exists, validate and reuse it, including any errors in that source.
+    """
+    url = source_url(dataset, frequency)
+    directory = Path(raw_dir)
+    stem = SOURCES[dataset] + ("_daily" if frequency == "daily" else "")
+    candidates = [directory / (stem + suffix) for suffix in (".csv", ".CSV", "_CSV.zip")]
+    for path in candidates:
+        if path.is_file():
+            load_french(dataset, directory, frequency=frequency)
+            return path
+    with urlopen(url, timeout=60) as response:
+        payload = response.read()
+    if not payload.startswith(b"PK"):
+        raise ValueError("Expected an original French ZIP download")
+    _parse(payload, dataset, frequency)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = candidates[-1]
+    # Exclusive creation also prevents an intervening download being overwritten.
+    with path.open("xb") as destination:
+        destination.write(payload)
+    return path
 
 
 def sample_coverage(frame: pd.DataFrame) -> pd.DataFrame:
