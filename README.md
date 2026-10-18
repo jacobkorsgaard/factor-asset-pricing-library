@@ -81,7 +81,6 @@ The explanations and methods in this repository draw primarily on three books th
 
 - **Munk, C. (2023). *Financial Markets and Investments*.** Foundations of investments, portfolio choice, and factor models.
 - **Cochrane, J. H. (2005). *Asset Pricing*, revised edition.** Asset-pricing theory, regression-based tests, and their portfolio interpretation.
-- **Campbell, J. Y., Lo, A. W., and MacKinlay, A. C. (1997). *The Econometrics of Financial Markets*.** Financial econometrics, return predictability, and empirical methods.
 
 ## License
 
