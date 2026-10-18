@@ -91,20 +91,13 @@ def test_adding_candidate_cannot_reduce_unconstrained_maximum_sharpe():
     assert result['difference'] >= -1e-12
 
 
-def test_notebook_downside_statistics_include_initial_wealth():
-    path = Path(__file__).resolve().parents[1] / 'notebooks/09_volatility_managed_factors.ipynb'
-    notebook = json.loads(path.read_text())
-    source = next(''.join(cell['source']) for cell in notebook['cells']
-                  if cell['cell_type'] == 'code' and ''.join(cell['source']).startswith('def downside_statistics'))
-    function = ast.parse(source).body[0]
-    namespace = {'sharpe_ratio': lambda series: 0}
-    exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), 'exec'), namespace)
-    result = namespace['downside_statistics'](pd.Series([-.2, .1, .1]))
-    assert result['Maximum drawdown (%)'] == pytest.approx(-20)
+def test_performance_summary_drawdown_includes_initial_wealth():
+    result = performance_summary(pd.Series([-.2, .1, .1], name='strategy'))
+    assert result.loc['strategy', 'maximum_drawdown'] == pytest.approx(-.2)
 
 
 def test_notebook_momentum_deciles_subtract_aligned_rf_once():
-    path = Path(__file__).resolve().parents[1] / 'notebooks/08_momentum_in_asset_pricing.ipynb'
+    path = Path(__file__).resolve().parents[1] / 'notebooks/04_momentum_in_asset_pricing.ipynb'
     notebook = json.loads(path.read_text())
     source = next(''.join(cell['source']) for cell in notebook['cells']
                   if cell['cell_type'] == 'code' and 'decile_excess = ' in ''.join(cell['source']))
@@ -115,7 +108,8 @@ def test_notebook_momentum_deciles_subtract_aligned_rf_once():
     portfolios = pd.DataFrame({'P1': [.01, .02, -.01], 'P10': [.03, -.01, .04]}, index=dates)
     rf = pd.Series([.002, .003, .004], index=dates, name='RF').iloc[::-1]
     factors = pd.DataFrame({'MKT': [.01, -.02, .03]}, index=dates)
-    namespace = {'pd': pd, 'momentum_deciles': portfolios, 'risk_free': rf, 'factors': factors}
+    namespace = {'pd': pd, 'deciles': portfolios,
+                 'sample': pd.concat([portfolios, rf, factors], axis=1)}
     exec(compile(ast.Module(body=statements, type_ignores=[]), str(path), 'exec'), namespace)
     pd.testing.assert_frame_equal(namespace['decile_excess'], portfolios.sub(rf, axis=0))
 

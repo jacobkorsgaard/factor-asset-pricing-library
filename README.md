@@ -8,34 +8,34 @@ To make these methods accessible and illustrate their practical relevance, I hav
 
 ## Constructing Tradable Factors
 
-These notebooks follow the construction of an investment from measured firm characteristics to portfolio holdings and traded factor payoffs. Execution of these notebooks requires original licensed WRDS exports of CRSP and Compustat data. Run 00 first to prepare the local inputs for 01–03.
+Notebooks 00–04 follow the construction of an investment from prepared data and measured firm characteristics to portfolio holdings and traded factor payoffs. Momentum in 04 applies this framework to signals based on past returns. Execution of these notebooks requires original licensed WRDS exports of CRSP and Compustat data. Run 00 first to prepare the local inputs for 01–04.
 
 | Notebook | What it shows |
 |---|---|
-| [00 — CRSP–Compustat Data Preparation](notebooks/00_crsp_compustat_data_preparation.ipynb) | Cleans and links original WRDS exports into reproducible local inputs for firm characteristics, portfolios, and factors. |
-| [01 — Firm Characteristics](notebooks/01_firm_characteristics.ipynb) | Measures Fama–French firm characteristics, accounting for information timing, coverage, and distributions. |
-| [02 — Characteristic Portfolio Formation](notebooks/02_portfolio_formation.ipynb) | Constructs characteristic portfolios using alternative sorting and weighting methods. |
-| [03 — Tradable Factors](notebooks/03_factor_construction.ipynb) | Constructs market and long–short factor payoffs and examines Fama–French factor returns. |
+| [00 - CRSP–Compustat Data Preparation](notebooks/00_crsp_compustat_data_preparation.ipynb) | Cleans and links original WRDS exports into reproducible local inputs for firm characteristics, portfolios, and factors. |
+| [01 - Firm Characteristics](notebooks/01_firm_characteristics.ipynb) | Measures Fama–French firm characteristics, accounting for information timing, coverage, and distributions. |
+| [02 - Characteristic Portfolio Formation](notebooks/02_portfolio_formation.ipynb) | Constructs characteristic portfolios using alternative sorting and weighting methods. |
+| [03 - Tradable Factors](notebooks/03_factor_construction.ipynb) | Constructs market and long–short factor payoffs and examines Fama–French factor returns. |
+| [04 - Cross-Sectional and Time-Series Momentum](notebooks/04_momentum_in_asset_pricing.ipynb) | Constructs US equity momentum strategies and compares formation horizons, long and short legs, and benchmark-adjusted performance. |
 
 ## Evaluating Factors and Asset Pricing Models
 
-These notebooks investigate whether a tradable factor generates abnormal returns, captures priced sources of risk, expands the mean–variance efficient frontier, and improves the pricing performance of existing asset-pricing models. These notebooks use publicly available Kenneth French data and do not require WRDS access.
+Notebooks 05–08 move from constructing investments to evaluating them. They examine individual factor contributions, cross-sectional pricing, portfolio investment opportunities, and joint asset-pricing model tests. These notebooks use publicly available Kenneth French data and do not require WRDS access.
 
 | Notebook | What it shows |
 |---|---|
-| [04 — Factor Spanning Tests](notebooks/04_time_series_factor_regressions.ipynb) | Evaluates factor spanning using CAPM regressions, residual diagnostics, and Newey–West inference. |
-| [05 — Cross-Sectional Asset Pricing](notebooks/05_cross_sectional_asset_pricing.ipynb) | Estimates compensation for market beta using Fama–MacBeth regressions and examines pricing errors. |
-| [06 — Mean–Variance Portfolio Theory](notebooks/06_mean_variance_portfolio_theory.ipynb) | Constructs efficient frontiers and tangency portfolios and compares factor investment opportunities. |
-| [07 — Asset-Pricing Model Tests](notebooks/07_asset_pricing_model_evaluation.ipynb) | Evaluates CAPM, three-factor, and five-factor models using portfolio alphas, GRS tests, and Sharpe ratios. |
+| [05 - Factor Spanning Tests](notebooks/05_time_series_factor_regressions.ipynb) | Evaluates whether the characteristic factors and published MOM add to the market using CAPM regressions and Newey–West inference. |
+| [06 - Cross-Sectional Asset Pricing](notebooks/06_cross_sectional_asset_pricing.ipynb) | Estimates compensation for market beta using Fama–MacBeth regressions and examines pricing errors. |
+| [07 - Mean–Variance Portfolio Theory](notebooks/07_mean_variance_portfolio_theory.ipynb) | Constructs efficient frontiers and tangency portfolios and compares factor investment opportunities. |
+| [08 - Asset-Pricing Model Tests](notebooks/08_asset_pricing_model_evaluation.ipynb) | Evaluates CAPM, three-factor, and five-factor models using portfolio alphas, GRS tests, and Sharpe ratios. |
 
 ## Applications and Empirical Finance Research
 
-These notebooks extend beyond the foundations of factor asset pricing to explore selected research questions and contemporary stylized facts from the empirical asset-pricing literature. These notebooks use publicly available Kenneth French data and do not require WRDS access.
+Notebook 09 applies the preceding evaluation methods to changing factor exposure over time through volatility management. It uses publicly available Kenneth French data and does not require WRDS access.
 
 | Notebook | What it shows |
 |---|---|
-| [08 — Momentum Factor and Factor Momentum](notebooks/08_momentum_in_asset_pricing.ipynb) | Constructs stock and factor momentum strategies and evaluates their incremental returns and explanatory power. |
-| [09 — Volatility-Managed Factors](notebooks/09_volatility_managed_factors.ipynb) | Examines volatility-managed factors using spanning tests, Sharpe comparisons, and momentum downside outcomes. |
+| [09 - Volatility-Managed Factors](notebooks/09_volatility_managed_factors.ipynb) | Calibrates volatility management over an initial ten-year window, then compares out-of-sample Sharpe ratios, cumulative returns, and benchmark alphas. |
 
 ## Installation and Setup
 
@@ -53,7 +53,7 @@ jupyter lab
 
 On Windows PowerShell, activate the environment using `.venv\Scripts\Activate.ps1`.
 
-Place original WRDS exports in `data/raw/wrds/` and Kenneth French CSV or ZIP files in `data/raw/french/`. Run notebook 00 before 01–03. Select the **Factor Asset Pricing** kernel and run cells from top to bottom.
+Place original WRDS exports in `data/raw/wrds/` and Kenneth French CSV or ZIP files in `data/raw/french/`. Run notebook 00 before 01–04. Select the **Factor Asset Pricing** kernel and run cells from top to bottom.
 
 ## Using the Python Library
 
@@ -66,10 +66,10 @@ The package provides reusable functions that can be imported directly into Pytho
 | Measure firm characteristics | [characteristics](src/factor_asset_pricing/characteristics.py): `market_equity`, `book_equity`, `operating_profitability`, `investment` | 01 |
 | Form portfolios and calculate returns | [sorts](src/factor_asset_pricing/sorts.py): `assign_portfolios`, `assign_annual_portfolios`, `portfolio_returns`. [construction](src/factor_asset_pricing/construction.py) combines these with characteristic measurement for annual portfolios. | 02, 03 |
 | Construct traded factors | [factors](src/factor_asset_pricing/factors.py): `long_short_factor`, `market_excess_return`, `fama_french_five_factors` | 03 |
-| Estimate exposures and conduct pricing tests | [asset_pricing_tests](src/factor_asset_pricing/asset_pricing_tests.py): `time_series_regression`, `two_pass_fama_macbeth`, `grs_test`, `performance_summary` | 04, 05, 07 |
-| Optimize portfolios | [mean_variance](src/factor_asset_pricing/mean_variance.py): `global_minimum_variance`, `efficient_frontier`, `tangency_portfolio` | 06 |
-| Construct momentum strategies | [momentum](src/factor_asset_pricing/momentum.py): `momentum_signal`, `stock_momentum`, `factor_momentum` | 08 |
-| Construct volatility-managed factors | [volatility_management](src/factor_asset_pricing/volatility_management.py): `aggregate_realized_variance`, `volatility_managed_return` | 09 |
+| Construct momentum strategies | [momentum](src/factor_asset_pricing/momentum.py): `prepare_momentum_data`, `momentum_signal_panel`, `size_balanced_stock_momentum`, `time_series_stock_momentum`, `momentum_portfolio_returns` | 04 |
+| Estimate exposures and conduct pricing tests | [asset_pricing_tests](src/factor_asset_pricing/asset_pricing_tests.py): `time_series_regression`, `two_pass_fama_macbeth`, `grs_test`, `performance_summary` | 05, 06, 08 |
+| Optimize portfolios | [mean_variance](src/factor_asset_pricing/mean_variance.py): `global_minimum_variance`, `efficient_frontier`, `tangency_portfolio` | 07 |
+| Construct volatility-managed factors | [volatility_management](src/factor_asset_pricing/volatility_management.py): `aggregate_realized_variance`, `volatility_managed_return`, `calibrate_volatility_management` | 09 |
 
 Data preparation is supported by [wrds_data](src/factor_asset_pricing/wrds_data.py), [data_preparation](src/factor_asset_pricing/data_preparation.py), and [french_data](src/factor_asset_pricing/french_data.py). These modules read and prepare local source files. Required WRDS inputs are listed in notebook 00. The French reader reports the official download URL when a required file is missing.
 

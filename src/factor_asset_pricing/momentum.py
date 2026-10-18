@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .factors import quantile_spread
+from .factors import fama_french_2x3_factor, quantile_spread
 from .sorts import assign_portfolios, portfolio_returns
 
 
@@ -248,3 +248,185 @@ def lagged_correlation_matrix(returns: pd.DataFrame, *, lag: int = 1) -> pd.Data
     result.index = returns.columns
     result.columns = returns.columns
     return result
+
+
+# =============================================================================
+# 3. Value-weighted stock momentum with dated formation inputs
+# =============================================================================
+def _monthly_stock_panel(data, id_col, date_col):
+    """Validate monthly keys and sort without depending on the input index."""
+    panel = data.copy()
+    panel[date_col] = pd.to_datetime(panel[date_col])
+    if panel[[id_col, date_col]].isna().any().any():
+        raise ValueError("security identifiers and dates must be nonmissing")
+    month = panel[date_col].dt.to_period("M")
+    if pd.DataFrame({"id": panel[id_col], "month": month}).duplicated().any():
+        raise ValueError("security-month keys must be unique")
+    return panel.sort_values([id_col, date_col]).reset_index(drop=True)
+
+
+def momentum_signal_panel(
+    data: pd.DataFrame, *, lookback: int = 12, skip: int = 1,
+    id_col: str = "id", date_col: str = "date", return_col: str = "ret",
+) -> pd.Series:
+    """Vectorized monthly signals, aligned to the input rows and index.
+
+    Equivalent to applying ``momentum_signal(..., dates=...)`` per security.
+    Missing returns and calendar gaps invalidate a window; a total loss is
+    allowed. Input rows need not be sorted and the input index may repeat.
+    ``skip=1`` includes the last completed month; ``skip=2`` omits it.
+    """
+    if not isinstance(lookback, int) or not isinstance(skip, int) or lookback < 1 or skip < 1:
+        raise ValueError("lookback and skip must be positive integers")
+    frame = data[[id_col, date_col, return_col]].copy()
+    frame["_input_row"] = np.arange(len(frame))
+    frame = _monthly_stock_panel(frame, id_col, date_col)
+    if not np.isfinite(frame[return_col].dropna()).all() or frame[return_col].dropna().lt(-1).any():
+        raise ValueError("simple returns must be finite and cannot be below -1")
+    if frame.empty:
+        return pd.Series(index=data.index, dtype=float, name="momentum")
+    ids = frame[id_col]
+    lagged = frame.groupby(id_col)[return_col].shift(skip)
+
+    def rolling_sum(values):
+        return values.groupby(ids).rolling(lookback, min_periods=lookback).sum().droplevel(0).reindex(frame.index)
+
+    logs = np.log1p(lagged.mask(lagged.eq(-1), 0))
+    signal = np.expm1(rolling_sum(logs))
+    signal = signal.mask(rolling_sum(lagged.eq(-1).astype(float)).gt(0) & signal.notna(), -1)
+    months = frame[date_col].dt.to_period("M").astype("int64")
+    first = months.groupby(ids).shift(skip + lookback - 1)
+    last = months.groupby(ids).shift(skip)
+    signal = signal.where(last.sub(first).eq(lookback - 1) & months.sub(last).eq(skip))
+    result = pd.Series(signal.to_numpy(), index=frame["_input_row"]).sort_index()
+    return pd.Series(result.to_numpy(), index=data.index, name="momentum")
+
+
+def prepare_momentum_data(
+    data: pd.DataFrame, risk_free: pd.Series, *, id_col: str = "id",
+    date_col: str = "date", return_col: str = "ret",
+    weight_col: str = "market_equity", exchange_col: str = "exchange",
+) -> pd.DataFrame:
+    """Add dated formation inputs and financed excess returns to stock records.
+
+    Returns a sorted panel with ``lag_me``, ``lag_exchange``, ``rf`` and
+    ``excess``. Market equity and exchange come from exactly the preceding
+    calendar month. RF is aligned by calendar month and must cover every row.
+    No stocks are filtered here: callers can impose a common signal universe
+    before calculating any portfolio breakpoints.
+    """
+    panel = _monthly_stock_panel(data, id_col, date_col)
+    if not isinstance(risk_free.index, pd.DatetimeIndex):
+        raise ValueError("risk_free must have a DatetimeIndex")
+    rf_months = risk_free.index.to_period("M")
+    if rf_months.has_duplicates:
+        raise ValueError("risk_free must contain unique months")
+    month = panel[date_col].dt.to_period("M").astype("int64")
+    consecutive = month.sub(month.groupby(panel[id_col]).shift(1)).eq(1)
+    panel["lag_me"] = panel.groupby(id_col)[weight_col].shift(1).where(consecutive)
+    panel["lag_exchange"] = panel.groupby(id_col)[exchange_col].shift(1).where(consecutive)
+    panel["rf"] = panel[date_col].dt.to_period("M").map(pd.Series(risk_free.to_numpy(), index=rf_months)).astype(float)
+    if not np.isfinite(panel["rf"]).all():
+        raise ValueError("risk_free must cover every stock month with a finite return")
+    panel["excess"] = panel[return_col] - panel["rf"]
+    return panel
+
+
+def _momentum_formation(data, signal_col, date_col):
+    panel = data.loc[data[signal_col].notna() & np.isfinite(data["lag_me"]) & data["lag_me"].gt(0)].copy()
+    if not np.isfinite(panel[signal_col]).all():
+        raise ValueError("signals must be finite when present")
+    panel[date_col] = pd.to_datetime(panel[date_col])
+    return panel
+
+
+def _momentum_labels(panel, signal_col, probabilities, date_col, reference_exchange):
+    reference = panel.loc[panel["lag_exchange"].eq(reference_exchange)]
+    cuts = reference.groupby(date_col)[signal_col].quantile(probabilities, interpolation="lower").unstack().reindex(columns=probabilities)
+    labels = pd.Series(1, index=panel.index, dtype=float)
+    for q in probabilities:
+        cutoff = panel[date_col].map(cuts[q])
+        labels += panel[signal_col].gt(cutoff).astype(int)
+        labels = labels.where(cutoff.notna())
+    return labels
+
+
+def size_balanced_stock_momentum(
+    data: pd.DataFrame, *, signal_col: str = "momentum", date_col: str = "date",
+    reference_exchange: int = 1,
+) -> pd.DataFrame:
+    """Construct size-balanced 2×3 CSMOM from prepared stock observations.
+
+    Use ``prepare_momentum_data`` first and supply a predetermined signal.
+    NYSE (by default) median size and 30/70 signal cutoffs use lower observed
+    quantiles and assign ties to the lower group. Cutoffs include observations
+    with missing holding returns. Returns then use available-return value
+    weights within cells, an ex-post data restriction. Missing extreme cells
+    leave that month's combined return missing rather than changing leg size.
+
+    Outputs are excess payoffs: ``Long only`` has exposure +1, ``Short only``
+    is the signed short payoff with exposure -1, and ``Combined`` is their sum.
+    """
+    panel = _momentum_formation(data, signal_col, date_col)
+    reference = panel.loc[panel["lag_exchange"].eq(reference_exchange)]
+    size_cut = reference.groupby(date_col)["lag_me"].quantile(.5, interpolation="lower")
+    mapped_size = panel[date_col].map(size_cut)
+    panel["_size"] = pd.Series(np.where(panel["lag_me"].le(mapped_size), 1., 2.), index=panel.index).where(mapped_size.notna())
+    panel["_momentum_group"] = _momentum_labels(panel, signal_col, [.3, .7], date_col, reference_exchange)
+    cells = portfolio_returns(panel, ["_size", "_momentum_group"], return_col="excess",
+                              date_col=date_col, weight_col="lag_me", lag_weights=False)
+    legs = fama_french_2x3_factor(cells, size_col="_size", characteristic_col="_momentum_group",
+                                date_col=date_col, name="CSMOM").set_index(date_col)
+    long, short = legs["CSMOM_long"], -legs["CSMOM_short"]
+    return pd.DataFrame({"Combined": long + short, "Long only": long, "Short only": short}).reindex(sorted(panel[date_col].unique())).rename_axis(date_col)
+
+
+def time_series_stock_momentum(
+    data: pd.DataFrame, *, signal_col: str = "momentum", date_col: str = "date",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return value-weighted stock TSMOM excess payoffs and exposures.
+
+    Takes the prepared columns from ``prepare_momentum_data``. Absolute base
+    weights sum to one over available holding returns; missing returns are
+    excluded before normalization, an ex-post data restriction. Signals choose
+    direction and zero signals hold cash. Neither side is rescaled separately.
+    Output legs are signed excess payoffs and sum to ``Combined``. Exposure
+    columns are ``long``, ``short`` (positive magnitude), ``net`` and ``gross``.
+    Financed total return per unit of capital is RF plus the combined payoff.
+    """
+    formation = _momentum_formation(data, signal_col, date_col)
+    dates = sorted(formation[date_col].unique())
+    panel = formation.loc[formation["excess"].notna()].copy()
+    base = panel["lag_me"] / panel.groupby(date_col)["lag_me"].transform("sum")
+    signed = base * np.sign(panel[signal_col])
+    long_weight, short_weight = signed.clip(lower=0), -signed.clip(upper=0)
+    long = (long_weight * panel["excess"]).groupby(panel[date_col]).sum()
+    short = (-short_weight * panel["excess"]).groupby(panel[date_col]).sum()
+    payoffs = pd.DataFrame({"Combined": long + short, "Long only": long, "Short only": short})
+    exposure = pd.DataFrame({"long": long_weight.groupby(panel[date_col]).sum(),
+                             "short": short_weight.groupby(panel[date_col]).sum()})
+    exposure["net"] = exposure["long"] - exposure["short"]
+    exposure["gross"] = exposure["long"] + exposure["short"]
+    return (payoffs.reindex(dates).rename_axis(date_col), exposure.reindex(dates).rename_axis(date_col))
+
+
+def momentum_portfolio_returns(
+    data: pd.DataFrame, *, signal_col: str = "momentum", n_portfolios: int = 10,
+    date_col: str = "date", return_col: str = "ret", reference_exchange: int = 1,
+) -> pd.DataFrame:
+    """Value-weighted momentum quantile *total* returns from a prepared panel.
+
+    Breakpoints precede current-return exclusions, use lower interpolation,
+    and put ties in the lower portfolio. Empty portfolios remain missing.
+    Subtract matched RF once to study excess returns of these long-only assets.
+    """
+    if not isinstance(n_portfolios, int) or n_portfolios < 2:
+        raise ValueError("n_portfolios must be an integer of at least two")
+    panel = _momentum_formation(data, signal_col, date_col)
+    panel["_momentum_group"] = _momentum_labels(panel, signal_col, np.arange(1, n_portfolios) / n_portfolios,
+                                               date_col, reference_exchange)
+    returns = portfolio_returns(panel, "_momentum_group", return_col=return_col,
+                                date_col=date_col, weight_col="lag_me", lag_weights=False)
+    wide = returns.pivot(index=date_col, columns="_momentum_group", values="ret")
+    return wide.reindex(index=sorted(panel[date_col].unique()), columns=range(1, n_portfolios + 1)).rename(
+        columns=lambda d: f"P{d}").rename_axis(index=date_col, columns=None)

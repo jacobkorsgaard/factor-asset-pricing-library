@@ -11,6 +11,11 @@ from factor_asset_pricing.momentum import (
     lagged_correlation_matrix,
     momentum_signal,
     stock_momentum,
+    momentum_signal_panel,
+    prepare_momentum_data,
+    size_balanced_stock_momentum,
+    time_series_stock_momentum,
+    momentum_portfolio_returns,
 )
 
 
@@ -159,3 +164,103 @@ def test_lagged_correlation_matrix_has_current_rows_and_lagged_columns():
     assert list(matrix.index) == ["a", "b"]
     assert list(matrix.columns) == ["a", "b"]
     assert np.isclose(matrix.loc["a", "b"], 1)
+
+
+def test_panel_signals_match_security_signals_with_gaps_and_losses():
+    def panel_signal(frame, lookback, skip):
+        return momentum_signal_panel(frame, lookback=lookback, skip=skip,
+                                     id_col='permno', date_col='mdate', return_col='retadj')
+    dates = pd.date_range('2000-01-01', periods=18, freq='MS')
+    a = pd.DataFrame({'permno': 1, 'mdate': dates, 'retadj': [.01, -.02, -1, np.nan] + [.03] * 14})
+    b = pd.DataFrame({'permno': 2, 'mdate': dates.delete(5), 'retadj': .02})
+    frame = pd.concat([a, b], ignore_index=True)
+    for lookback in [1, 3, 6, 12]:
+        for skip in [1, 2]:
+            actual = panel_signal(frame, lookback, skip)
+            expected = pd.concat([
+                momentum_signal(g.retadj, lookback=lookback, skip=skip, dates=g.mdate)
+                for _, g in frame.groupby('permno')]).reindex(frame.index)
+            pd.testing.assert_series_equal(actual, expected, check_names=False, atol=1e-12, rtol=1e-12)
+    # Changing month t's payoff must not change month t's position signal.
+    changed = frame.copy()
+    changed.loc[12, 'retadj'] = -.8
+    assert panel_signal(frame, 6, 1).loc[12] == panel_signal(changed, 6, 1).loc[12]
+
+
+def test_panel_signals_preserve_unsorted_rows_and_repeated_index_labels():
+    frame = pd.DataFrame({'id': [2, 1, 2, 1],
+        'date': pd.to_datetime(['2020-02-01', '2020-01-01', '2020-01-01', '2020-02-01']),
+        'ret': [.3, .1, -.2, .4]}, index=[7, 7, 3, 3])
+    actual = momentum_signal_panel(frame, lookback=1)
+    assert actual.index.equals(frame.index)
+    np.testing.assert_allclose(actual, [-.2, np.nan, np.nan, .1], equal_nan=True)
+    with pytest.raises(ValueError, match='unique'):
+        momentum_signal_panel(pd.concat([frame, frame.iloc[[0]]]), lookback=1)
+
+
+def test_preparation_lags_inputs_by_calendar_month_and_aligns_rf():
+    dates = pd.to_datetime(['2020-01-31', '2020-02-29', '2020-04-30'])
+    data = pd.DataFrame({'id': 1, 'date': dates, 'ret': [.1, .2, .3],
+                         'market_equity': [10., 20., 30.], 'exchange': [1, 2, 3]})
+    rf = pd.Series([.001, .002, .003], index=dates.to_period('M').to_timestamp()).iloc[::-1]
+    prepared = prepare_momentum_data(data, rf)
+    np.testing.assert_allclose(prepared.lag_me, [np.nan, 10., np.nan], equal_nan=True)
+    np.testing.assert_allclose(prepared.lag_exchange, [np.nan, 1, np.nan], equal_nan=True)
+    np.testing.assert_allclose(prepared.excess, [.099, .198, .297])
+    with pytest.raises(ValueError, match='cover every'):
+        prepare_momentum_data(data, rf.iloc[:1])
+
+
+def _prepared_momentum_cross_section():
+    return pd.DataFrame({'id': range(8), 'date': pd.Timestamp('2020-02-01'),
+        'momentum': [-.4, -.3, .3, .4] * 2, 'lag_me': [1.] * 4 + [10.] * 4,
+        'lag_exchange': 1, 'ret': [.01, .03, .04, .08, .02, .04, .05, .10],
+        'rf': .002}).assign(excess=lambda x: x.ret - x.rf)
+
+
+def test_size_balanced_stock_momentum_uses_equal_size_legs_and_signed_short():
+    panel = _prepared_momentum_cross_section()
+    result = size_balanced_stock_momentum(panel).iloc[0]
+    assert result['Long only'] == pytest.approx(.09 - .002)
+    assert result['Short only'] == pytest.approx(-(.025 - .002))
+    assert result['Combined'] == pytest.approx(.065)
+    # A change in unavailable future returns cannot change formation cutoffs.
+    panel.loc[0, ['ret', 'excess']] = np.nan
+    result = size_balanced_stock_momentum(panel).iloc[0]
+    assert result['Long only'] == pytest.approx(.088)
+    assert result['Short only'] == pytest.approx(-(.03 - .002))
+
+
+def test_time_series_stock_momentum_financing_and_zero_signal_cash():
+    panel = _prepared_momentum_cross_section()
+    panel.loc[2, 'momentum'] = 0
+    panel.loc[7, ['ret', 'excess']] = np.nan
+    payoffs, exposure = time_series_stock_momentum(panel)
+    weights = panel.lag_me.where(panel.ret.notna(), 0)
+    weights = weights / weights.sum() * np.sign(panel.momentum)
+    expected = (weights * panel.excess).sum()
+    assert payoffs.iloc[0]['Combined'] == pytest.approx(expected)
+    assert exposure.iloc[0]['net'] == pytest.approx(weights.sum())
+    assert exposure.iloc[0]['gross'] == pytest.approx(weights.abs().sum())
+    assert exposure.iloc[0]['gross'] < 1
+    assert payoffs.iloc[0]['Combined'] == pytest.approx(
+        (weights * panel.ret).sum() - weights.sum() * .002)
+    assert payoffs.iloc[0]['Combined'] == pytest.approx(payoffs.iloc[0]['Long only'] + payoffs.iloc[0]['Short only'])
+
+
+def test_stock_portfolios_use_formation_cutoffs_before_missing_return_exclusion():
+    panel = _prepared_momentum_cross_section()
+    panel.loc[0, ['ret', 'excess']] = np.nan
+    returns = momentum_portfolio_returns(panel, n_portfolios=2).iloc[0]
+    assert returns.P1 == pytest.approx((.03 + 10 * .02 + 10 * .04) / 21)
+    assert returns.P2 == pytest.approx((.04 + .08 + 10 * .05 + 10 * .10) / 22)
+
+
+def test_missing_reference_or_holding_returns_do_not_create_zero_payoffs():
+    panel = _prepared_momentum_cross_section()
+    panel['lag_exchange'] = 2
+    assert size_balanced_stock_momentum(panel).isna().all().all()
+    assert momentum_portfolio_returns(panel).isna().all().all()
+    panel[['ret', 'excess']] = np.nan
+    payoffs, exposure = time_series_stock_momentum(panel)
+    assert payoffs.isna().all().all() and exposure.isna().all().all()
