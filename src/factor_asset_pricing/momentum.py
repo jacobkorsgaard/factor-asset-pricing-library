@@ -275,6 +275,8 @@ def momentum_signal_panel(
     Missing returns and calendar gaps invalidate a window; a total loss is
     allowed. Input rows need not be sorted and the input index may repeat.
     ``skip=1`` includes the last completed month; ``skip=2`` omits it.
+    For a common 12–2 stock-momentum signal, use ``lookback=11, skip=2``
+    to compound months t−12 through t−2.
     """
     if not isinstance(lookback, int) or not isinstance(skip, int) or lookback < 1 or skip < 1:
         raise ValueError("lookback and skip must be positive integers")
@@ -386,9 +388,12 @@ def time_series_stock_momentum(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return value-weighted stock TSMOM excess payoffs and exposures.
 
-    Takes the prepared columns from ``prepare_momentum_data``. Absolute base
-    weights sum to one over available holding returns; missing returns are
-    excluded before normalization, an ex-post data restriction. Signals choose
+    Takes the prepared columns from ``prepare_momentum_data`` and a supplied
+    signal. For 12–2 formation, supply ``momentum_signal_panel`` with
+    ``lookback=11, skip=2``; portfolio weights do not set the signal horizon.
+    Absolute base weights sum to one over available holding returns; missing
+    returns are excluded before normalization, an ex-post data restriction.
+    Signals choose
     direction and zero signals hold cash. Neither side is rescaled separately.
     Output legs are signed excess payoffs and sum to ``Combined``. Exposure
     columns are ``long``, ``short`` (positive magnitude), ``net`` and ``gross``.
